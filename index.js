@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = 3000;
 
@@ -66,16 +66,13 @@ async function run() {
 
     // get all user
     app.get("/users", verifyJWT, async (req, res) => {
-
-      console.log(req.decoded);
-
       const users = await userCollection.find().toArray();
 
       res.send(users);
     });
 
     // get single user
-    app.get("/user/:email", async (req, res) => {
+    app.get("/user/:email", verifyJWT, async (req, res) => {
       const { email } = req?.params;
       const existUser = await userCollection.findOne({ email });
       if (!existUser) {
@@ -91,14 +88,41 @@ async function run() {
       const { email } = req?.params;
       const { userData } = req?.body;
 
-      console.log({ email, userData });
-
-      // const existingUser = await userCollection.findOne({ email });
-      // if (existingUser) {
-      //   res.send({ message: "This user Already exist!" });
-      //   return;
-      // }
+      const existingUser = await userCollection.findOne({ email });
+      if (existingUser) {
+        res.send({ message: "This user Already exist!" });
+        return;
+      }
       const result = await userCollection.insertOne(userData);
+      res.send(result);
+    });
+
+    // delete user
+    app.delete(`/user/:id`, verifyJWT, async (req, res) => {
+      const { id } = req?.params;
+
+      const query = new ObjectId(id);
+
+      const result = await userCollection.deleteOne({ _id: query });
+
+      res.send(result);
+    });
+
+    // update user data
+    app.patch(`/user/:id`, verifyJWT, async (req, res) => {
+      const { id } = req?.params;
+      const doc = req.body;
+
+      const query = new ObjectId(id);
+
+      const result = await userCollection.updateOne(
+        { _id: query },
+        { $set: doc },
+        {
+          upsert: true,
+        }
+      );
+
       res.send(result);
     });
   } catch (err) {
