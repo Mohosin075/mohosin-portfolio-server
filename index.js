@@ -135,39 +135,42 @@ async function run() {
     });
 
     app.get("/products", async (req, res) => {
-      const { title, category, sort, page = 1, limit = 9 } = req.query;
+      const { title, category, sort = "asc", page = 1, limit = 12 } = req.query;
 
-      const query = {};
+      try {
+        const pageNumber = Math.max(Number(page), 1);
+        const limitNumber = Math.max(Number(limit), 1);
 
-      if (title) {
-        query.title = { $regex: title, $options: "i" };
+        const sortOption = sort === "asc" ? 1 : -1;
+
+        const query = {};
+        if (title) {
+          query.name = { $regex: title, $options: "i" };
+        }
+        if (category) {
+          query.category = { $regex: category, $options: "i" };
+        }
+
+        const product = await productCollection
+          .find(query)
+          .skip((pageNumber - 1) * limitNumber)
+          .limit(limitNumber)
+          .sort({ price: sortOption })
+          .toArray();
+
+        const total = await productCollection.countDocuments(query);
+
+        const allProducts = await productCollection.find({}).toArray();
+        const categories = [
+          ...new Set(allProducts.map((product) => product.category)),
+        ];
+
+        // Send the response
+        res.status(200).send({ product, categories, total, page: pageNumber });
+      } catch (error) {
+        console.error("Error fetching products:", error.message);
+        res.status(500).send({ error: "Failed to fetch products." });
       }
-      if (category) {
-        query.category = { $regex: category, $options: "i" };
-      }
-      const sortOption = sort === "asc" ? 1 : -1;
-
-      const pageNumber = Number(page);
-      const limitNumber = Number(limit);
-
-      const product = await productCollection
-        .find(query)
-        .skip((pageNumber - 1) * limitNumber)
-        .limit(limitNumber)
-        .sort({ price: sortOption })
-        .toArray();
-
-      const total = await productCollection.countDocuments(query);
-
-      // const productInfo = await allProductCollection
-      //   .find({}, { projection: { category: 1, brand: 1 } })
-      //   .toArray();
-      const brands = [...new Set(product.map((product) => product.brand))];
-      const categories = [
-        ...new Set(product.map((product) => product.category)),
-      ];
-
-      res.send({ product, categories, brands, total });
     });
 
     // delete user
@@ -214,7 +217,7 @@ async function run() {
     });
 
     // get single product data
-    app.get(`/product/:id`, verifyJWT, async (req, res) => {
+    app.get(`/product/:id`, async (req, res) => {
       const { id } = req?.params;
       const doc = req.body;
 
