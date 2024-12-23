@@ -135,7 +135,7 @@ async function run() {
     });
 
     app.get("/products", async (req, res) => {
-      const { brand, title, category, sort, page = 1, limit = 9 } = req.query;
+      const { title, category, sort, page = 1, limit = 9 } = req.query;
 
       const query = {};
 
@@ -170,6 +170,17 @@ async function run() {
       res.send({ product, categories, brands, total });
     });
 
+    // delete user
+    app.delete(`/product/:id`, verifyJWT, async (req, res) => {
+      const { id } = req?.params;
+
+      const query = new ObjectId(id);
+
+      const result = await productCollection.deleteOne({ _id: query });
+
+      res.send(result);
+    });
+
     // get seller product
     app.get("/products/:email", verifyJWT, async (req, res) => {
       const { email } = req?.params;
@@ -181,6 +192,36 @@ async function run() {
       const result = await productCollection
         .find({ sellerEmail: email })
         .toArray();
+      res.send(result);
+    });
+
+    // update product data
+    app.patch(`/product/:id`, verifyJWT, async (req, res) => {
+      const { id } = req?.params;
+      const doc = req.body;
+
+      const query = new ObjectId(id);
+
+      const result = await productCollection.updateOne(
+        { _id: query },
+        { $set: doc },
+        {
+          upsert: true,
+        }
+      );
+
+      res.send(result);
+    });
+
+    // get single product data
+    app.get(`/product/:id`, verifyJWT, async (req, res) => {
+      const { id } = req?.params;
+      const doc = req.body;
+
+      const query = new ObjectId(id);
+
+      const result = await productCollection.findOne({ _id: query });
+
       res.send(result);
     });
   } catch (err) {
