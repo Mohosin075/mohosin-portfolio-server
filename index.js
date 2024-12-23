@@ -47,6 +47,7 @@ async function run() {
     await beautyLuxeDB.command({ ping: 1 });
 
     const userCollection = beautyLuxeDB.collection("users");
+    const productCollection = beautyLuxeDB.collection("products");
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
@@ -123,6 +124,63 @@ async function run() {
         }
       );
 
+      res.send(result);
+    });
+
+    // add Product
+    app.post("/product", verifyJWT, async (req, res) => {
+      const products = req.body;
+      const result = await productCollection.insertOne(products);
+      res.send(result);
+    });
+
+    app.get("/products", async (req, res) => {
+      const { brand, title, category, sort, page = 1, limit = 9 } = req.query;
+
+      const query = {};
+
+      if (title) {
+        query.title = { $regex: title, $options: "i" };
+      }
+      if (category) {
+        query.category = { $regex: category, $options: "i" };
+      }
+      const sortOption = sort === "asc" ? 1 : -1;
+
+      const pageNumber = Number(page);
+      const limitNumber = Number(limit);
+
+      const product = await productCollection
+        .find(query)
+        .skip((pageNumber - 1) * limitNumber)
+        .limit(limitNumber)
+        .sort({ price: sortOption })
+        .toArray();
+
+      const total = await productCollection.countDocuments(query);
+
+      // const productInfo = await allProductCollection
+      //   .find({}, { projection: { category: 1, brand: 1 } })
+      //   .toArray();
+      const brands = [...new Set(product.map((product) => product.brand))];
+      const categories = [
+        ...new Set(product.map((product) => product.category)),
+      ];
+
+      res.send({ product, categories, brands, total });
+    });
+
+    // get seller product
+    app.get("/products/:email", verifyJWT, async (req, res) => {
+      const { email } = req?.params;
+      const existingUser = await userCollection.findOne({ email });
+      if (!existingUser) {
+        res.send({ message: "This user Does not exist!" });
+        return;
+      }
+      const result = await productCollection
+        .find({ sellerEmail: email })
+        .toArray();
       res.send(result);
     });
   } catch (err) {
