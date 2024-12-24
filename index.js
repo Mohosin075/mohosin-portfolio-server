@@ -53,6 +53,7 @@ async function run() {
 
     const userCollection = beautyLuxeDB.collection("users");
     const productCollection = beautyLuxeDB.collection("products");
+    const cardCollection = beautyLuxeDB.collection("cards");
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
@@ -275,6 +276,189 @@ async function run() {
         .toArray();
 
       res.send(result);
+    });
+
+    // post cart
+    app.post("/card", async (req, res) => {
+      const { email, productId, quantity } = req.body;
+
+      if (!email || !productId || quantity < 1) {
+        return res.status(400).json({ message: "Invalid input data" });
+      }
+
+      try {
+        // Check if cart exists for the user
+        const userCart = await cardCollection.findOne({ email });
+
+        if (userCart) {
+          const existingItemIndex = userCart.items.findIndex(
+            (item) => item.productId === productId
+          );
+
+          if (existingItemIndex > -1) {
+            // Update the quantity
+            userCart.items[existingItemIndex].quantity += quantity;
+          } else {
+            // Add new product
+            userCart.items.push({ productId, quantity });
+          }
+
+          // Update the cart in the database
+          await cardCollection.updateOne(
+            { email },
+            { $set: { items: userCart.items } }
+          );
+        } else {
+          // Create a new cart for the user
+          await cardCollection.insertOne({
+            email,
+            items: [{ productId, quantity }],
+          });
+        }
+
+        res
+          .status(200)
+          .json({ message: "Item added/updated in cart", insertedId: 1 });
+      } catch (error) {
+        console.error("Error adding item to cart:", error);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    // app.get("/card/:email", async (req, res) => {
+    //   const { email } = req.params;
+
+    //   try {
+    //     // Find the cart for the user
+    //     const cart = await cardCollection.findOne({ email });
+
+    //     if (!cart || !cart.items || cart.items.length === 0) {
+    //       return res
+    //         .status(404)
+    //         .json({ message: "Cart is empty or not found" });
+    //     }
+
+    //     // Retrieve product details for all product IDs in the cart
+    //     const productIds = cart.items.map((product) => product.productId);
+    //     const products = await productCollection
+    //       .find({ _id: { $in: productIds.map((id) => new ObjectId(id)) } })
+    //       .toArray();
+
+    //     // Combine cart quantities with product details
+    //     const detailedCart = cart.items.map((item) => {
+    //       const productDetails = products.find(
+    //         (product) => product._id.toString() === item.productId
+    //       );
+    //       return {
+    //         ...productDetails,
+    //         quantity: item.quantity,
+    //       };
+    //     });
+
+    //     res.status(200).json({ email: cart.email, items: detailedCart });
+    //   } catch (error) {
+    //     console.error("Error fetching cart:", error);
+    //     res.status(500).json({ message: "Server error" });
+    //   }
+    // });
+
+
+
+    app.get("/card/:email", async (req, res) => {
+      const { email } = req.params;
+    
+      try {
+        // Find the cart for the user
+        const cart = await cardCollection.findOne({ email });
+    
+        if (!cart || !cart.items || cart.items.length === 0) {
+          return res
+            .status(404)
+            .json({ message: "Cart is empty or not found" });
+        }
+    
+        // Retrieve product details for all product IDs in the cart
+        const productIds = cart.items.map((product) => product.productId);
+        const products = await productCollection
+          .find({ _id: { $in: productIds.map((id) => new ObjectId(id)) } })
+          .toArray();
+    
+        // Calculate the total price
+        let totalPrice = 0;
+        const detailedCart = cart.items.map((item) => {
+          const productDetails = products.find(
+            (product) => product._id.toString() === item.productId
+          );
+          if (productDetails) {
+            totalPrice += productDetails.price * item.quantity; // Calculate total price
+          }
+          return {
+            ...productDetails,
+            quantity: item.quantity,
+          };
+        });
+    
+        // Send the response with cart items and total price
+        res.status(200).json({ email: cart.email, items: detailedCart, totalPrice });
+      } catch (error) {
+        console.error("Error fetching cart:", error);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    app.delete("/card/:email/:productId", async (req, res) => {
+      const { email, productId } = req.params;
+
+      try {
+        // Update the cart by removing the specified product
+        const result = await cardCollection.updateOne(
+          { email },
+          { $pull: { items: { productId } } }
+        );
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).json({ message: "Item not found in cart" });
+        }
+
+        res.status(200).json({ message: "Item removed from cart" });
+      } catch (error) {
+        console.error("Error removing item from cart:", error);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    app.patch("/card", async (req, res) => {
+      const { email, productId, quantity } = req.body;
+
+      if (quantity < 1) {
+        return res.status(400).json({ message: "Quantity must be at least 1" });
+      }
+
+      try {
+        // Find the cart by email
+        const cart = await cardCollection.findOne({ email });
+
+        if (!cart) {
+          return res.status(404).json({ message: "Cart not found" });
+        }
+
+        // Find the product in the cart and update the quantity
+        const updatedCart = await cardCollection.updateOne(
+          { email, "items.productId": productId },
+          {
+            $set: { "items.$.quantity": quantity },
+          }
+        );
+
+        if (updatedCart.matchedCount === 0) {
+          return res.status(404).json({ message: "Product not found in cart" });
+        }
+
+        res.status(200).json({ message: "Cart updated successfully" });
+      } catch (error) {
+        console.error("Error updating cart:", error);
+        res.status(500).json({ message: "Server error" });
+      }
     });
   } catch (err) {
     console.log(err);
