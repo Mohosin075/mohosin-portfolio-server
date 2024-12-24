@@ -3,12 +3,17 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // middleware
 require("dotenv").config();
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+  })
+);
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Middleware to verify JWT
 const verifyJWT = (req, res, next) => {
@@ -42,7 +47,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const beautyLuxeDB = client.db("beautyLuxe");
     await beautyLuxeDB.command({ ping: 1 });
 
@@ -224,6 +229,50 @@ async function run() {
       const query = new ObjectId(id);
 
       const result = await productCollection.findOne({ _id: query });
+
+      res.send(result);
+    });
+
+    app.patch("/add-wishlist", async (req, res) => {
+      const { userEmail, productId } = req.body;
+
+      const result = await userCollection.updateOne(
+        { email: userEmail },
+        { $addToSet: { wishlist: new ObjectId(String(productId)) } },
+        { upsert: true }
+      );
+
+      res.send(result);
+    });
+
+    // remove from wishlist
+    app.patch("/remove-wishlist", async (req, res) => {
+      const { userEmail, productId } = req.body;
+
+      const isObjectIdStored = true;
+      const productIdToRemove = isObjectIdStored
+        ? new ObjectId(String(productId))
+        : productId;
+
+      const result = await userCollection.updateOne(
+        { email: userEmail },
+        { $pull: { wishlist: productIdToRemove } }
+      );
+
+      res.send(result);
+    });
+
+    app.get("/wishlist/:email", async (req, res) => {
+      const { email } = req.params;
+      const user = await userCollection.findOne({ email });
+
+      if (!user) {
+        res.send("User not found!");
+      }
+
+      const result = await productCollection
+        .find({ _id: { $in: user?.wishlist || [] } })
+        .toArray();
 
       res.send(result);
     });
