@@ -47,13 +47,13 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // await client.connect();
-    const beautyLuxeDB = client.db("beautyLuxe");
-    await beautyLuxeDB.command({ ping: 1 });
+    client.connect();
+    const portfolioDB = client.db("mohosinPortfolio");
+    await portfolioDB.command({ ping: 1 });
 
-    const userCollection = beautyLuxeDB.collection("users");
-    const productCollection = beautyLuxeDB.collection("products");
-    const cardCollection = beautyLuxeDB.collection("cards");
+    const userCollection = portfolioDB.collection("users");
+    const productCollection = portfolioDB.collection("products");
+    const cardCollection = portfolioDB.collection("cards");
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
@@ -263,12 +263,13 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/wishlist/:email", async (req, res) => {
+    app.get("/wishlist/:email", verifyJWT, async (req, res) => {
       const { email } = req.params;
-      const user = await userCollection.findOne({ email });
+
+      const user = await userCollection.findOne({ email: email.toLowerCase() });
 
       if (!user) {
-        res.send("User not found!");
+        return res.send("User not found!");
       }
 
       const result = await productCollection
@@ -325,64 +326,25 @@ async function run() {
       }
     });
 
-    // app.get("/card/:email", async (req, res) => {
-    //   const { email } = req.params;
-
-    //   try {
-    //     // Find the cart for the user
-    //     const cart = await cardCollection.findOne({ email });
-
-    //     if (!cart || !cart.items || cart.items.length === 0) {
-    //       return res
-    //         .status(404)
-    //         .json({ message: "Cart is empty or not found" });
-    //     }
-
-    //     // Retrieve product details for all product IDs in the cart
-    //     const productIds = cart.items.map((product) => product.productId);
-    //     const products = await productCollection
-    //       .find({ _id: { $in: productIds.map((id) => new ObjectId(id)) } })
-    //       .toArray();
-
-    //     // Combine cart quantities with product details
-    //     const detailedCart = cart.items.map((item) => {
-    //       const productDetails = products.find(
-    //         (product) => product._id.toString() === item.productId
-    //       );
-    //       return {
-    //         ...productDetails,
-    //         quantity: item.quantity,
-    //       };
-    //     });
-
-    //     res.status(200).json({ email: cart.email, items: detailedCart });
-    //   } catch (error) {
-    //     console.error("Error fetching cart:", error);
-    //     res.status(500).json({ message: "Server error" });
-    //   }
-    // });
-
-
-
     app.get("/card/:email", async (req, res) => {
       const { email } = req.params;
-    
+
       try {
         // Find the cart for the user
         const cart = await cardCollection.findOne({ email });
-    
+
         if (!cart || !cart.items || cart.items.length === 0) {
           return res
             .status(404)
             .json({ message: "Cart is empty or not found" });
         }
-    
+
         // Retrieve product details for all product IDs in the cart
         const productIds = cart.items.map((product) => product.productId);
         const products = await productCollection
           .find({ _id: { $in: productIds.map((id) => new ObjectId(id)) } })
           .toArray();
-    
+
         // Calculate the total price
         let totalPrice = 0;
         const detailedCart = cart.items.map((item) => {
@@ -397,9 +359,11 @@ async function run() {
             quantity: item.quantity,
           };
         });
-    
+
         // Send the response with cart items and total price
-        res.status(200).json({ email: cart.email, items: detailedCart, totalPrice });
+        res
+          .status(200)
+          .json({ email: cart.email, items: detailedCart, totalPrice });
       } catch (error) {
         console.error("Error fetching cart:", error);
         res.status(500).json({ message: "Server error" });
